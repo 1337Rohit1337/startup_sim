@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Modern neutral base with warm undertones */
+    --background: 0 0% 99.5%;
+    --foreground: 240 10% 15%;
+    
+    /* Cards with subtle contrast */
+    --card: 0 0% 98.5%;
+    --card-foreground: 240 8% 20%;
+    
+    /* Popovers */
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 15%;
+    
+    /* Primary: Sophisticated indigo */
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    
+    /* Secondary: Soft neutral */
+    --secondary: 240 4% 95%;
+    --secondary-foreground: 240 8% 25%;
+    
+    /* Muted elements */
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 45%;
+    
+    /* Accent: Subtle violet */
+    --accent: 250 15% 94%;
+    --accent-foreground: 243 75% 59%;
+    
+    /* Destructive: Modern red */
+    --destructive: 0 85% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Borders and inputs */
+    --border: 240 6% 90%;
+    --input: 240 6% 94%;
+    --ring: 243 75% 59%;
+    --radius: 0.75rem;
+    
+    /* Sidebar */
+    --sidebar-background: 240 5% 97%;
+    --sidebar-foreground: 240 8% 25%;
+    --sidebar-primary: 243 75% 59%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 93%;
+    --sidebar-accent-foreground: 240 8% 25%;
+    --sidebar-border: 240 6% 88%;
+    --sidebar-ring: 243 75% 59%;
+  }
+  
+  .dark {
+    /* Dark mode with rich, deep tones */
+    --background: 240 10% 7%;
+    --foreground: 240 5% 92%;
+    
+    /* Cards */
+    --card: 240 8% 9%;
+    --card-foreground: 240 5% 90%;
+    
+    /* Popovers */
+    --popover: 240 10% 8%;
+    --popover-foreground: 240 5% 92%;
+    
+    /* Primary: Bright indigo for contrast */
+    --primary: 243 75% 65%;
+    --primary-foreground: 240 10% 7%;
+    
+    /* Secondary */
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 240 5% 85%;
+    
+    /* Muted */
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 5% 64%;
+    
+    /* Accent */
+    --accent: 240 4% 16%;
+    --accent-foreground: 243 75% 65%;
+    
+    /* Destructive */
+    --destructive: 0 75% 55%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Borders and inputs */
+    --border: 240 4% 18%;
+    --input: 240 4% 16%;
+    --ring: 243 75% 65%;
+    
+    /* Sidebar */
+    --sidebar-background: 240 8% 9%;
+    --sidebar-foreground: 240 5% 85%;
+    --sidebar-primary: 243 75% 65%;
+    --sidebar-primary-foreground: 240 10% 7%;
+    --sidebar-accent: 240 4% 16%;
+    --sidebar-accent-foreground: 240 5% 85%;
+    --sidebar-border: 240 4% 18%;
+    --sidebar-ring: 243 75% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    /* Subtle texture for premium feel */
+    background-image: radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.02) 1px, transparent 0);
+    background-size: 20px 20px;
+  }
+  
+  /* Custom gradients for modern look */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(243 75% 68%) 100%);
+  }
+  
+  .gradient-card {
+    background: linear-gradient(145deg, 
+      hsl(var(--card)) 0%, 
+      hsl(240 4% 97%) 50%, 
+      hsl(var(--card)) 100%);
+  }
+  
+  .dark .gradient-card {
+    background: linear-gradient(145deg, 
+      hsl(var(--card)) 0%, 
+      hsl(240 6% 11%) 50%, 
+      hsl(var(--card)) 100%);
+  }
+  
+  /* Glassmorphism effect */
+  .glass {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  
+  .dark .glass {
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  
+  /* Subtle shadows */
+  .shadow-soft {
+    box-shadow: 0 2px 25px -5px rgba(0, 0, 0, 0.06), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+  
+  .dark .shadow-soft {
+    box-shadow: 0 2px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  }
+}
