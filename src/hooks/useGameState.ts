@@ -3,6 +3,31 @@ import { GameState, GameChoices, GameScores } from '@/types/game';
 
 // Extended game state to match GameShell expectations
 
+interface FinanceChanges {
+  type: 'INITIALIZE_STARTUP' | 'HIRE_TEAM_MEMBER' | 'ADD_FEATURE';
+  initialCosts?: {
+    setup: number;
+    development: number;
+    legal: number;
+    marketing: number;
+  };
+  monthlyFixed?: {
+    rent: number;
+    salaries: number;
+    utilities: number;
+    insurance: number;
+  };
+  operationalCosts?: {
+    perUnit: number;
+    laborPerUnit: number;
+    materialPerUnit: number;
+  };
+  cost?: number;
+  monthlyCost?: number;
+  developmentCost?: number;
+  maintenanceCost?: number;
+}
+
 interface TeamMember {
   id: string;
   name: string;
@@ -30,51 +55,75 @@ interface ExtendedGameState extends GameState {
   resources: {
     money: number;
     time: number;
+    energy: number;
   };
+  users: number;
   teamSkill: number;
   morale: number;
   teamMembers: TeamMember[];
   features: Feature[];
   socialPosts: any[];
   currentEvent: any;
-  triggerEvent?: (event: any) => void
+  triggerEvent?: (event: any) => void;
+    choices: GameChoices;  // Add this
+  xp: number;           // Add this
+  coins: number;        // Add this
+  currentStage: number; // Add this
+  completed: boolean;
 }
 
 const initialGameState: ExtendedGameState = {
-  currentStage: 1,
+  stage: 'foundation',
+  score: 0,
+  resources: {
+    money: 100000,
+    time: 90,
+    energy: 100
+  },
+  finances: {
+    totalInvestment: 0,
+    revenue: 0,
+    expenses: {
+      development: 0,
+      marketing: 0,
+      operations: 0
+    },
+    metrics: {
+      breakEvenProgress: 0,
+      profitMargin: 0,
+      customerAcquisitionCost: 0
+    }
+  },
+  users:1000,
+  morale: 100,
   scores: {
     foundation: 0,
     development: 0,
     marketing: 0,
     overall: 0
   },
+  team: [],
+  teamSkill:0,
+  selectedFeatures: [],
+  teamMembers: [],
+  features: [],
+  socialPosts: [],
+  currentEvent: null,
   choices: {
+    selectedIdea: undefined,
     validation: [],
     teamMembers: [],
     features: [],
-    brandColor: '#3b82f6',
+    brandColor: '',
     marketingChannels: [],
     budgetAllocation: {}
   },
-  completed: false,
   xp: 0,
-  level: 1,
-  coins: 100,
-  // Added properties that GameShell expects
-  stage: 'foundation',
-  score: 0,
-  resources: {
-    money: 23000,
-    time: 100
-  },
-  morale: 75,
-  teamMembers: [],
-  features: [],
-  teamSkill: 0,
-  socialPosts: [],
-  currentEvent: null
-};
+  coins: 0,
+  currentStage: 1,
+  completed: false
 
+};
 
 
 const calculateTeamSkill = (members: TeamMember[]): number => {
@@ -90,6 +139,70 @@ const canHandleFeatureComplexity = (teamSkill: number, feature: Feature): boolea
 export const useGameState = () => {
   const [gameState, setGameState] = useState<ExtendedGameState>(initialGameState);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Move updateFinances inside useGameState and make it a useCallback
+const updateFinances = useCallback((changes: FinanceChanges) => {
+  switch (changes.type) {
+    case 'INITIALIZE_STARTUP':
+      if (changes.initialCosts && changes.monthlyFixed && changes.operationalCosts) {
+        const totalInvestment = Object.values(changes.initialCosts).reduce((a, b) => a + b, 0);
+        setGameState(prev => ({
+          ...prev,
+          finances: {
+            ...prev.finances,
+            initialCosts: changes.initialCosts,
+            monthlyFixed: changes.monthlyFixed,
+            operationalCosts: changes.operationalCosts,
+            totalInvestment: totalInvestment
+          },
+          resources: {
+            ...prev.resources,
+            money: (prev.resources.money) - (totalInvestment)
+          }
+        }));
+      }
+      break;
+
+    case 'HIRE_TEAM_MEMBER':
+      if (changes.cost && changes.monthlyCost) {
+        setGameState(prev => ({
+          ...prev,
+          resources: {
+            ...prev.resources,
+            money: prev.resources.money - changes.cost!
+          },
+          finances: {
+            ...prev.finances,
+            expenses: {
+              ...prev.finances.expenses,
+              operations: prev.finances.expenses.operations + changes.monthlyCost!
+            }
+          }
+        }));
+      }
+      break;
+
+    case 'ADD_FEATURE':
+      if (changes.developmentCost && changes.maintenanceCost) {
+        setGameState(prev => ({
+          ...prev,
+          resources: {
+            ...prev.resources,
+            money: prev.resources.money - changes.developmentCost
+          },
+          finances: {
+            ...prev.finances,
+            expenses: {
+              ...prev.finances.expenses,
+              development: prev.finances.expenses.development + changes.maintenanceCost!
+            }
+          }
+        }));
+      }
+      break;
+  }
+}, []);
+
 
     const triggerEvent = useCallback((event: any) => {
     setGameState(prev => ({
@@ -138,20 +251,24 @@ const updateScore = useCallback((points: number) => {
 }, []);
 
 
-  const updateResources = useCallback((resourceUpdates: Partial<{ money: number; time: number }>) => {
-    setGameState(prev => ({
-      ...prev,
-      resources: {
-        ...prev.resources,
-        ...resourceUpdates
-      }
-    }));
-  }, []);
+const updateResources = useCallback((resourceUpdates: Partial<{ 
+  money: number; 
+  time: number;
+  users: number; // Add users to the type
+}>) => {
+  setGameState(prev => ({
+    ...prev,
+    resources: {
+      ...prev.resources,
+      ...resourceUpdates
+    }
+  }));
+}, []);
 
 const addTeamMember = useCallback((member: TeamMember) => {
   setGameState(prev => {
     const newTeamMembers = [...prev.teamMembers, member];
-    const newTeamSkill = calculateTeamSkill(newTeamMembers);
+    const newTeamSkill = newTeamMembers.reduce((sum, m) => sum + m.skill, 0) / newTeamMembers.length;
     
     const newChoices = {
       ...prev.choices,
@@ -169,7 +286,7 @@ const addTeamMember = useCallback((member: TeamMember) => {
     return {
       ...prev,
       teamMembers: newTeamMembers,
-      teamSkill: newTeamSkill,
+      teamSkill: Math.round(newTeamSkill),
       choices: newChoices,
       resources: {
         ...prev.resources,
@@ -459,47 +576,56 @@ const addTeamMember = useCallback((member: TeamMember) => {
   const nextStage = useCallback(async () => {
     setIsLoading(true);
     
-    // Check team capability for all features
-    const problematicFeatures = gameState.features.filter(feature => {
-      const teamSkill = gameState.teamMembers.reduce((sum, member) => sum + member.skill, 0) / 
-                       gameState.teamMembers.length;
-      return feature.complexity * 2 > teamSkill;
-    });
-
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Loading animation
-
-    if (problematicFeatures.length > 0) {
-      triggerEvent({
-        id: 'team_capability_warning',
-        title: 'Team Capability Warning',
-        description: `Your team may struggle with: ${problematicFeatures.map(f => f.name).join(', ')}. Consider upgrading your team or simplifying features.`,
-        type: 'warning'
+    try {
+      // Check team capability for all features
+      const problematicFeatures = gameState.features.filter(feature => {
+        return feature.complexity * 2 > gameState.teamSkill;
       });
+
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Loading animation
+
+      if (problematicFeatures.length > 0) {
+        triggerEvent({
+          id: 'team_capability_warning',
+          title: 'Team Capability Warning',
+          description: `Your team may struggle with: ${problematicFeatures.map(f => f.name).join(', ')}. Consider upgrading your team or simplifying features.`,
+          type: 'warning'
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      setGameState(prev => {
+        const stageMap: Record<string, 'foundation' | 'build' | 'launch'> = {
+          'foundation': 'build',
+          'build': 'launch',
+          'launch': 'launch'
+        } as const;
+        
+        const newStage = stageMap[prev.stage];
+        const newCurrentStage = prev.currentStage + 1;
+        
+        return {
+          ...prev,
+          stage: newStage,
+          currentStage: newCurrentStage,
+          completed: newCurrentStage >= 3
+        };
+      });
+    } catch (error) {
+      console.error('Error in nextStage:', error);
+      triggerEvent({
+        id: 'stage_error',
+        title: 'Error',
+        description: 'There was an error progressing to the next stage.',
+        type: 'error'
+      });
+    } finally {
       setIsLoading(false);
-      return;
     }
+  }, [gameState.features, gameState.teamSkill, triggerEvent]);
 
-    setGameState(prev => {
-      let newStage: 'foundation' | 'build' | 'launch' = prev.stage;
-      
-      if (prev.currentStage === 1) newStage = 'build';
-      else if (prev.currentStage === 2) newStage = 'launch';
-      
-      const xpGain = Math.round(prev.scores.overall * 0.1);
-      
-      return {
-        ...prev,
-        currentStage: prev.currentStage + 1,
-        stage: newStage,
-        xp: prev.xp + xpGain,
-        coins: prev.coins + Math.round(xpGain * 0.5),
-        completed: prev.currentStage >= 3
-      };
-    });
-    
-    setIsLoading(false);
-  }, [gameState.features, gameState.teamMembers, triggerEvent]);
-
+  const [isComplete, setIsComplete] = useState(false);
   const resetGame = useCallback(() => {
     setGameState(initialGameState);
   }, []);
@@ -524,5 +650,7 @@ const addTeamMember = useCallback((member: TeamMember) => {
     updateMarketingScore,
     isLoading,
     removeFeature,
+    updateFinances,
+    isComplete,
   };
-};
+}

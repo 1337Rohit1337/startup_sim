@@ -5,9 +5,71 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { TrendingUp, DollarSign, Users, Zap, Target, Eye, MousePointer, ShoppingCart, Heart, AlertTriangle } from 'lucide-react';
+import { checkSuccessConditions } from '@/components/utils/successFailureChecks';
+import { LiveMetrics } from '@/components/launch/LiveMetrics';
+import { 
+  TrendingUp, 
+  DollarSign, 
+  Users, 
+  Zap, 
+  Target, 
+  Eye, 
+  MousePointer, 
+  ShoppingCart, 
+  Heart, 
+  AlertTriangle,
+  Check, 
+  Clock 
+} from 'lucide-react';
+import { getSuccessThreshold } from '@/data/successConditions';
 
-// Marketing channels data
+// Types
+import { 
+  MonthlyMetrics, 
+  MonthlyExpenses, 
+  MonthlyEvent 
+} from '@/types/progression';
+
+// Data
+import { INITIAL_METRICS } from '@/data/monthlyMetrics';
+
+// Utils
+
+import { calculateMonthlyMetrics } from '@/components/utils/progressionCalculations';
+
+// Components
+import { SuccessFailureModal } from '@/components/launch/SuccessFailureModal';
+
+// Interfaces
+interface MonthlyDecision {
+  marketingBudget: number;
+  serverInvestment: number;
+  hiring: number;
+  research: number;
+}
+
+interface LaunchStageProps {
+  gameState: any;
+  addSocialPost: (post: any) => void;
+  updateScore: (points: number) => void;
+  updateResources: (resources: any) => void;
+  updateMarketingScore: (score: number) => void;
+  triggerEvent: (event: any) => void;
+  updateFinances: (changes: {
+    type: string;
+    costs?: {
+      campaignBudget: number;
+      channelCosts: Record<string, number>;
+      expectedRevenue: number;
+    };
+    developmentCost?: number;
+    maintenanceCost?: number;
+  }) => void;
+  resolveEvent: () => void;
+  onComplete: () => void;
+}
+
+// Constants
 const MARKETING_CHANNELS = [
   {
     id: 'instagram',
@@ -65,42 +127,79 @@ const MARKETING_CHANNELS = [
   }
 ];
 
-interface LaunchStageProps {
-  gameState: any;
-  addSocialPost: (post: any) => void;
-  updateScore: (points: number) => void;
-  updateResources: (resources: any) => void;
-  updateMarketingScore: (score: number) => void; // Add this prop
-  triggerEvent: (event: any) => void;
-  resolveEvent: () => void;
-  onComplete: () => void;
-}
-
 export const LaunchStage = ({ 
   gameState, 
   addSocialPost, 
   updateScore, 
   updateResources,
-  updateMarketingScore, // Add this prop
+  updateMarketingScore,
   triggerEvent,
   resolveEvent,
+  updateFinances,
   onComplete 
 }: LaunchStageProps) => {
+  // State declarations
+  const [monthlyDecisions, setMonthlyDecisions] = useState<MonthlyDecision>({
+  marketingBudget: 0,
+  serverInvestment: 0,
+  hiring: 0,
+  research: 0
+});
   const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
   const [budgetAllocation, setBudgetAllocation] = useState<Record<string, number>>({});
   const [campaignStarted, setCampaignStarted] = useState(false);
   const [campaignComplete, setCampaignComplete] = useState(false);
+
+  
   const [metrics, setMetrics] = useState({
     impressions: 0,
     clicks: 0,
     conversions: 0,
     followers: 0
   });
-  
-  const totalBudget = gameState.resources.money; // Use remaining money as marketing budget
+  const [showLiveMetrics, setShowLiveMetrics] = useState(false);
+  const [baseMetrics, setBaseMetrics] = useState({
+  revenue: 0,
+  users: 0,
+  roi: 0
+});
+  const [currentMonth, setCurrentMonth] = useState(1);
+  const [monthlyMetrics, setMonthlyMetrics] = useState<MonthlyMetrics>(INITIAL_METRICS);
+  const [previousMetrics, setPreviousMetrics] = useState<MonthlyMetrics | null>(null);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<MonthlyExpenses>({
+    marketing: 0,
+    servers: 0,
+    salaries: 0,
+    maintenance: 0,
+    customerSupport: 0,
+    total: 0
+  });
+  const [showMonthlyModal, setShowMonthlyModal] = useState(false);
+  const [showSuccessFailureModal, setShowSuccessFailureModal] = useState(false);
+
+  const [monthlyDecisionMade, setMonthlyDecisionMade] = useState(false);
+
+  // Derived state
+  const totalBudget = gameState.resources.money;
   const allocatedBudget = Object.values(budgetAllocation).reduce((sum, amount) => sum + amount, 0);
-  
-  // Helper function to calculate marketing score
+  const canMakeDecision = selectedChannels.length >= 2 && allocatedBudget >= 1000 && allocatedBudget <= totalBudget;
+
+  // Helper functions
+  const calculateMaintenanceCosts = () => {
+    return selectedChannels.reduce((total, channelId) => {
+      const channel = MARKETING_CHANNELS.find(c => c.id === channelId);
+      return total + (channel?.cost || 0) * 0.1; // 10% maintenance cost
+    }, 0);
+  };
+
+  const calculateExpectedRevenue = () => {
+    return selectedChannels.reduce((total, channelId) => {
+      const channel = MARKETING_CHANNELS.find(c => c.id === channelId);
+      if (!channel) return total;
+      return total + (channel.reach * channel.engagement * 100);
+    }, 0);
+  };
+
   const calculateMarketingScore = (channels: string[], budget: Record<string, number>): number => {
     if (channels.length === 0) return 0;
     
@@ -114,7 +213,7 @@ export const LaunchStage = ({
       return sum + (reach + engagement);
     }, 0);
     
-    // Budget allocation efficiency (penalize if budget is not allocated)
+    // Budget allocation efficiency
     const totalBudgetAllocated = Object.values(budget).reduce((sum, amount) => sum + amount, 0);
     const budgetEfficiency = totalBudgetAllocated > 0 ? 1 : 0.5;
     
@@ -124,7 +223,8 @@ export const LaunchStage = ({
     
     return Math.round(Math.max(0, Math.min(100, normalizedScore)));
   };
-  
+
+    // Event Handlers
   const handleChannelToggle = (channelId: string) => {
     const channel = MARKETING_CHANNELS.find(c => c.id === channelId);
     if (!channel) return;
@@ -157,14 +257,14 @@ export const LaunchStage = ({
       });
     }
   };
-  
+
   const handleBudgetChange = (channelId: string, amount: number) => {
     setBudgetAllocation(prev => ({
       ...prev,
       [channelId]: amount
     }));
   };
-  
+
   const startCampaign = () => {
     if (allocatedBudget > totalBudget) {
       triggerEvent({
@@ -175,12 +275,18 @@ export const LaunchStage = ({
       });
       return;
     }
-    
+
     setCampaignStarted(true);
-    
-    // Deduct marketing budget from resources
     updateResources({ money: totalBudget - allocatedBudget });
-    
+    updateFinances({
+      type: 'MARKETING_CAMPAIGN',
+      costs: {
+        campaignBudget: allocatedBudget,
+        channelCosts: budgetAllocation,
+        expectedRevenue: calculateExpectedRevenue()
+      }
+    });
+
     // Simulate campaign metrics
     const simulateMetrics = () => {
       const channelData = selectedChannels.map(channelId => 
@@ -189,15 +295,12 @@ export const LaunchStage = ({
       
       const totalReach = channelData.reduce((sum, channel) => sum + channel.reach, 0);
       const totalEngagement = channelData.reduce((sum, channel) => sum + channel.engagement, 0);
-      const budgetMultiplier = Math.min(allocatedBudget / 3000, 3); // Budget efficiency
+      const budgetMultiplier = Math.min(allocatedBudget / 3000, 3);
       
-      // Team member bonus (marketing specialists boost performance)
       const marketingTeamMembers = gameState.teamMembers.filter((member: any) => 
         member.role === 'marketer'
       ).length;
       const teamBonus = 1 + (marketingTeamMembers * 0.3);
-      
-      // Feature bonus (more features = more to market)
       const featureBonus = 1 + (gameState.features.length * 0.1);
       
       const baseImpressions = totalReach * 1000 * budgetMultiplier * teamBonus;
@@ -205,7 +308,6 @@ export const LaunchStage = ({
       const baseConversions = baseClicks * 0.05 * teamBonus;
       const baseFollowers = baseImpressions * 0.001 * featureBonus;
       
-      // Add randomness for realism
       const randomFactor = 0.8 + Math.random() * 0.4;
       
       const finalMetrics = {
@@ -217,7 +319,6 @@ export const LaunchStage = ({
       
       setMetrics(finalMetrics);
       
-      // Add social posts based on performance
       if (finalMetrics.impressions > 50000) {
         addSocialPost({
           id: Date.now(),
@@ -230,25 +331,20 @@ export const LaunchStage = ({
       
       return finalMetrics;
     };
-    
+
     // Simulate real-time updates
     let updateCount = 0;
     const interval = setInterval(() => {
       const currentMetrics = simulateMetrics();
       updateCount++;
       
-      // Stop after 10 updates (20 seconds)
       if (updateCount >= 10) {
         clearInterval(interval);
         setCampaignComplete(true);
         
-        // Calculate marketing score based on channels and budget allocation
         const marketingScore = calculateMarketingScore(selectedChannels, budgetAllocation);
-        
-        // Update the marketing score in the game state
         updateMarketingScore(marketingScore);
         
-        // Calculate performance bonus score
         const performanceScore = Math.round(
           (currentMetrics.impressions / 1000) * 0.1 +
           (currentMetrics.clicks / 100) * 0.5 +
@@ -258,7 +354,7 @@ export const LaunchStage = ({
         
         updateScore(performanceScore);
         
-        // Trigger success/failure events
+        // Trigger appropriate event based on performance
         if (currentMetrics.conversions > 100) {
           triggerEvent({
             id: 'campaign_success',
@@ -266,7 +362,7 @@ export const LaunchStage = ({
             description: `Amazing! Your campaign generated ${currentMetrics.conversions} conversions. Marketing score: ${marketingScore}/100. Your startup is gaining real traction!`,
             type: 'success'
           });
-          updateScore(500); // Bonus for successful campaign
+          updateScore(500);
         } else if (currentMetrics.conversions < 20) {
           triggerEvent({
             id: 'campaign_poor',
@@ -275,7 +371,6 @@ export const LaunchStage = ({
             type: 'warning'
           });
         } else {
-          // Medium performance
           triggerEvent({
             id: 'campaign_moderate',
             title: 'Campaign Complete',
@@ -286,11 +381,245 @@ export const LaunchStage = ({
       }
     }, 2000);
   };
+      const handleMetricsComplete = () => {
+  setShowLiveMetrics(false);}
+  const handleMonthlyDecision = () => {
+    if (!canMakeDecision) return;
+    
+    // Update monthly decisions with actual values
+      setBaseMetrics({
+    revenue: monthlyMetrics.revenue,
+    users: gameState.users,
+    roi: monthlyMetrics.marketingROI * 100
+  });
   
-  const canProceed = selectedChannels.length >= 2 && allocatedBudget >= 1000;
-  const canStartCampaign = canProceed && !campaignStarted && allocatedBudget <= totalBudget;
+    setShowLiveMetrics(true);
+    setMonthlyDecisions({
+      marketingBudget: allocatedBudget,
+      serverInvestment: Math.round(allocatedBudget * 0.1), // 10% for server maintenance
+      hiring: 0,
+      research: 0
+    });
+
+
+    // Deduct the allocated budget from available money
+    updateResources({ 
+      money: gameState.resources.money - allocatedBudget 
+    });
+
+    updateFinances({
+      type: 'MARKETING_CAMPAIGN',
+      costs: {
+        campaignBudget: allocatedBudget,
+        channelCosts: budgetAllocation,
+        expectedRevenue: calculateExpectedRevenue()
+      },
+      maintenanceCost: calculateMaintenanceCosts()
+    });
+
+    const marketingScore = calculateMarketingScore(selectedChannels, budgetAllocation);
+    updateMarketingScore(marketingScore);
+
+    setMonthlyDecisionMade(true);
+  };
+
+
+  const handleInvestment = (debtAmount: number) => {
+  const investmentAmount = Math.abs(debtAmount) + 5000; // Extra buffer money
+  const investorNames = [
+    'Sequoia Capital',
+    'Y Combinator',
+    'Andreessen Horowitz',
+    'SoftBank Vision Fund',
+    'Accel Partners'
+  ];
   
-  return (
+  const randomInvestor = investorNames[Math.floor(Math.random() * investorNames.length)];
+  
+  triggerEvent({
+    id: 'investment_received',
+    title: 'Investment Secured! 🎉',
+    description: `Due to your startup's potential, ${randomInvestor} has invested $${investmentAmount.toLocaleString()} in your company to help overcome the cash flow challenges.`,
+    type: 'success'
+  });
+
+  updateResources({
+    money: gameState.resources.money + investmentAmount
+  });
+
+  return investmentAmount;
+};
+const MONTHS_PER_STEP = 3;
+
+const progressToNextMonth = async () => {
+  try {
+    // Progress multiple months at once
+    for (let i = 0; i < MONTHS_PER_STEP; i++) {
+      setPreviousMetrics(monthlyMetrics);
+
+      // Market impact factors
+      const marketingEffectiveness = selectedChannels.reduce((total, channelId) => {
+        const channel = MARKETING_CHANNELS.find(c => c.id === channelId);
+        return total + (channel?.reach || 0) * (channel?.engagement || 0);
+      }, 0) / 100;
+
+      const budgetEfficiency = allocatedBudget > 0 ? 
+        Math.min(allocatedBudget / (gameState.resources.money * 0.3), 1.5) : 0.5;
+
+      // Calculate user growth with marketing impact
+      const baseUserGrowthRate = 0.05; // 5% base growth
+      const marketingUserGrowthRate = marketingEffectiveness * budgetEfficiency * 0.2;
+      const totalUserGrowthRate = baseUserGrowthRate + marketingUserGrowthRate;
+      
+      const currentUsers = gameState.users;
+      const newUsers = Math.round(currentUsers * (1 + totalUserGrowthRate));
+      const userGrowthPercentage = ((newUsers - currentUsers) / currentUsers) * 100;
+
+      // Calculate revenue components
+      const baseRevenue = monthlyMetrics.revenue || 1000;
+      const averageRevenuePerUser = 5; // $5 per user
+      const conversionRate = (monthlyMetrics.conversionRate || 1) / 100;
+      
+      // Revenue from different sources
+      const userRevenue = newUsers * conversionRate * averageRevenuePerUser;
+      const marketingRevenue = marketingEffectiveness * budgetEfficiency * 1000;
+      const baseGrowth = baseRevenue * 0.1; // 10% base growth
+
+      // Calculate new total revenue
+      const newRevenue = Math.round(baseRevenue + userRevenue + marketingRevenue + baseGrowth);
+
+      // Calculate expenses
+      const expenses = {
+        marketing: allocatedBudget,
+        servers: monthlyDecisions.serverInvestment,
+        maintenance: calculateMaintenanceCosts(),
+        salaries: (gameState.teamMembers?.length || 0) * 5000,
+        overhead: 2000
+      };
+
+      const totalExpenses = Object.values(expenses).reduce((sum, cost) => sum + cost, 0);
+      const monthlyProfit = newRevenue - totalExpenses;
+
+      // Update metrics with balanced growth
+      const newMetrics: MonthlyMetrics = {
+        revenue: newRevenue,
+        userGrowth: userGrowthPercentage, // Use actual calculated growth percentage
+        customerSatisfaction: Math.min(
+          monthlyMetrics.customerSatisfaction * 
+          (monthlyMetrics.serverUptime / 100) * 
+          (1 - monthlyMetrics.churnRate / 200),
+          100
+        ),
+        serverUptime: Math.min(
+          monthlyMetrics.serverUptime + 
+          (monthlyDecisions.serverInvestment / 1000),
+          99.99
+        ),
+        marketingROI: allocatedBudget > 0 ?
+          (newRevenue - baseRevenue) / allocatedBudget : 0,
+        cashflow: monthlyProfit,
+        churnRate: Math.max(
+          2,
+          15 - (monthlyMetrics.customerSatisfaction / 10)
+        ),
+        conversionRate: Math.min(
+          5 + (marketingEffectiveness * 10) * 
+          (monthlyMetrics.customerSatisfaction / 100),
+          30
+        )
+      };
+
+      // Check if company needs investment
+      let finalMoney = gameState.resources.money + monthlyProfit;
+      if (finalMoney < 0) {
+        const investmentAmount = handleInvestment(finalMoney);
+        finalMoney += investmentAmount;
+      }
+
+      // Log before update
+      console.log('Before Update:', {
+        currentUsers,
+        newUsers,
+        userGrowth: userGrowthPercentage,
+        money: finalMoney
+      });
+
+      // Update game resources
+      await updateResources({
+        users: newUsers,
+        money: finalMoney
+      });
+
+      // Log after update
+      console.log('After Update:', {
+        users: gameState.users,
+        money: gameState.resources.money
+      });
+
+      // Log monthly report
+      console.log('Monthly Financial Report:', {
+        month: currentMonth + i + 1,
+        baseRevenue,
+        userRevenue,
+        marketingRevenue,
+        newRevenue,
+        totalExpenses,
+        profit: monthlyProfit,
+        userGrowth: userGrowthPercentage,
+        marketingEffectiveness
+      });
+
+      setMonthlyMetrics(newMetrics);
+      setCurrentMonth(prev => prev + 1);
+    }
+
+    // Reset decisions after multiple months
+    setMonthlyDecisionMade(false);
+    setSelectedChannels([]);
+    setBudgetAllocation({});
+
+    // Random market events (20% chance)
+    if (Math.random() > 0.8) {
+      const isPositive = Math.random() > 0.5;
+      const eventImpact = isPositive ? 
+        (1 + Math.random() * 0.2) : // Positive: 100-120% 
+        (0.8 + Math.random() * 0.2); // Negative: 80-100%
+
+      const updatedMetrics = {
+        ...monthlyMetrics,
+        revenue: Math.round(monthlyMetrics.revenue * eventImpact),
+        userGrowth: monthlyMetrics.userGrowth * eventImpact
+      };
+
+      setMonthlyMetrics(updatedMetrics);
+
+      triggerEvent({
+        id: 'market_shift',
+        title: 'Market Shift!',
+        description: isPositive ?
+          'Market trends are favoring your product! User acquisition has improved.' :
+          'A competitor has launched a new feature. User acquisition costs have increased.',
+        type: isPositive ? 'success' : 'warning'
+      });
+    }
+
+    // Check for game completion
+    if (currentMonth >= 12) {
+      setShowSuccessFailureModal(true);
+    }
+
+    setShowLiveMetrics(false);
+  } catch (error) {
+    console.error('Error progressing to next month:', error);
+    triggerEvent({
+      id: 'month_progress_error',
+      title: 'Error',
+      description: 'Failed to progress to next month',
+      type: 'error'
+    });
+  }
+};
+    return (
     <div className="space-y-8">
       {/* Header */}
       <div className="text-center">
@@ -298,8 +627,7 @@ export const LaunchStage = ({
           Stage 3: Launch & Market
         </h2>
         <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-          It's time to launch your startup to the world! Choose your marketing channels 
-          and allocate your budget wisely to maximize reach and conversions.
+          Guide your startup through monthly marketing decisions and track your growth metrics.
         </p>
       </div>
 
@@ -325,28 +653,78 @@ export const LaunchStage = ({
         </Alert>
       )}
 
-      {/* Resources & Team Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Month and Progress Overview */}
+      <div className="bg-white rounded-lg p-4 border">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-xl font-semibold">Month {currentMonth}</h3>
+            <p className="text-sm text-gray-600">
+              {currentMonth <= 3 ? 'Early Stage' : 
+               currentMonth <= 6 ? 'Growth Stage' : 
+               'Optimization Stage'}
+            </p>
+          </div>
+          <Badge variant="outline" className="text-lg">
+            ${gameState.resources.money.toLocaleString()} Available
+          </Badge>
+        </div>
+        <Progress 
+          value={(currentMonth / 12) * 100} 
+          className="h-2 mb-2"
+        />
+        <div className="flex justify-between text-sm text-gray-600">
+          <span>Launch</span>
+          <span>Growth</span>
+          <span>Optimization</span>
+        </div>
+      </div>
+
+      {/* Key Metrics Dashboard */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Marketing Budget</p>
-                <p className="text-2xl font-bold text-green-600">${gameState.resources.money}</p>
+                <p className="text-sm font-medium text-gray-600">Monthly Revenue</p>
+                <p className="text-2xl font-bold text-green-600">
+                  ${monthlyMetrics.revenue.toLocaleString()}
+                </p>
               </div>
               <DollarSign className="w-8 h-8 text-green-500" />
             </div>
+          
           </CardContent>
         </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Users</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {Math.round(gameState.users * (1 + monthlyMetrics.userGrowth/100)).toLocaleString()}
+              </p>
+            </div>
+            <Users className="w-8 h-8 text-blue-500" />
+          </div>
+          <div className="mt-2 text-sm text-gray-600">
+            
+            <br />
+            Growth: {monthlyMetrics.userGrowth.toFixed(1)}%
+          </div>
+        </CardContent>
+      </Card>
 
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Team Size</p>
-                <p className="text-2xl font-bold text-blue-600">{gameState.teamMembers.length}</p>
+                <p className="text-sm font-medium text-gray-600">Customer Satisfaction</p>
+                <p className="text-2xl font-bold text-purple-600">
+                  {monthlyMetrics.customerSatisfaction.toFixed(1)}%
+                </p>
               </div>
-              <Users className="w-8 h-8 text-blue-500" />
+              <Heart className="w-8 h-8 text-purple-500" />
             </div>
           </CardContent>
         </Card>
@@ -355,291 +733,283 @@ export const LaunchStage = ({
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Features Built</p>
-                <p className="text-2xl font-bold text-purple-600">{gameState.features.length}</p>
+                <p className="text-sm font-medium text-gray-600">Marketing ROI</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {(monthlyMetrics.marketingROI * 100).toFixed(1)}%
+                </p>
               </div>
-              <Zap className="w-8 h-8 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Team Morale</p>
-                <p className="text-2xl font-bold text-red-600">{gameState.morale}%</p>
-              </div>
-              <Heart className="w-8 h-8 text-red-500" />
+              <TrendingUp className="w-8 h-8 text-orange-500" />
             </div>
           </CardContent>
         </Card>
       </div>
-        
-      {/* Budget Allocation Overview */}
+
+      {/* Monthly Marketing Decisions */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Budget Allocation
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5" />
+              Monthly Marketing Strategy
+            </div>
+            <Badge variant={monthlyDecisionMade ? "success" : "outline"}>
+              {monthlyDecisionMade ? "Decisions Made" : "Decisions Needed"}
+            </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex justify-between text-lg font-semibold">
-              <span>Available Budget:</span>
-              <span>${totalBudget.toLocaleString()}</span>
+          <div className="space-y-6">
+            {/* Channel Selection */}
+            <div>
+              <h4 className="font-medium mb-3">Active Marketing Channels</h4>
+              <div className="grid grid-cols-3 gap-3">
+                {MARKETING_CHANNELS.map((channel) => {
+                  const isSelected = selectedChannels.includes(channel.id);
+                  const canSelect = selectedChannels.length < 3 || isSelected;
+                  
+                  return (
+                    <div
+                      key={channel.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                        isSelected 
+                          ? 'border-blue-500 bg-blue-50' 
+                          : !canSelect 
+                          ? 'opacity-50' 
+                          : 'hover:border-blue-200'
+                      }`}
+                      onClick={() => canSelect && handleChannelToggle(channel.id)}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="font-medium">{channel.name}</p>
+                        <Badge variant="outline">
+                          ${channel.cost.toLocaleString()}
+                        </Badge>
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Reach</span>
+                          <span>{channel.reach}/10</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Engagement</span>
+                          <span>{channel.engagement}/10</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Allocated:</span>
-              <span className={allocatedBudget > totalBudget ? 'text-red-600' : 'text-green-600'}>
-                ${allocatedBudget.toLocaleString()}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Remaining:</span>
-              <span>${Math.max(0, totalBudget - allocatedBudget).toLocaleString()}</span>
-            </div>
-            <Progress 
-              value={(allocatedBudget / Math.max(totalBudget, 1)) * 100} 
-              className={`h-2 ${allocatedBudget > totalBudget ? 'bg-red-100' : ''}`}
-            />
-            {allocatedBudget > totalBudget && (
-              <p className="text-sm text-red-600">⚠️ Budget allocation exceeds available funds</p>
+
+            {/* Budget Allocation */}
+            {selectedChannels.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-3">Budget Allocation</h4>
+                <div className="space-y-4">
+                  {selectedChannels.map(channelId => {
+                    const channel = MARKETING_CHANNELS.find(c => c.id === channelId);
+                    if (!channel) return null;
+                    
+                    const currentAllocation = budgetAllocation[channelId] || channel.cost;
+                    const percentage = (currentAllocation / totalBudget) * 100;
+                    
+                    return (
+                      <div key={channelId} className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span>{channel.name}</span>
+                          <span className="font-medium">
+                            ${currentAllocation.toLocaleString()} ({percentage.toFixed(1)}%)
+                          </span>
+                        </div>
+                        <Slider
+                          value={[currentAllocation]}
+                          onValueChange={([value]) => handleBudgetChange(channelId, value)}
+                          min={channel.cost}
+                          max={Math.max(totalBudget, channel.cost)}
+                          step={100}
+                          className="w-full"
+                          disabled={monthlyDecisionMade}
+                        />
+                      </div>
+                    );
+                  })}
+
+                  <div className="pt-4 border-t">
+                    <div className="flex justify-between text-sm mb-2">
+                      <span>Total Allocation</span>
+                      <span className={allocatedBudget > totalBudget ? 'text-red-600' : 'text-green-600'}>
+                        ${allocatedBudget.toLocaleString()} / ${totalBudget.toLocaleString()}
+                      </span>
+                    </div>
+                    <Progress 
+                      value={(allocatedBudget / totalBudget) * 100}
+                      className="h-2"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Monthly Decision Button */}
+            {!monthlyDecisionMade && (
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleMonthlyDecision}
+                  disabled={!canMakeDecision}
+                  size="lg"
+                >
+                  {canMakeDecision ? (
+                    'Confirm Monthly Strategy'
+                  ) : (
+                    `Select channels and allocate budget`
+                  )}
+                </Button>
+              </div>
             )}
           </div>
         </CardContent>
       </Card>
-        
-      {/* Channel Selection */}
-      <div>
-        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Target className="h-5 w-5" />
-          Choose Marketing Channels (Select 2-3 channels)
-        </h3>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {MARKETING_CHANNELS.map((channel) => {
-            const isSelected = selectedChannels.includes(channel.id);
-            const canSelect = selectedChannels.length < 3 || isSelected;
-            
-            return (
-              <Card 
-                key={channel.id}
-                className={`cursor-pointer transition-all hover:shadow-md ${
-                  isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
-                } ${!canSelect ? 'opacity-50' : ''}`}
-                onClick={() => canSelect && handleChannelToggle(channel.id)}
-              >
-                <CardHeader>
-                  <CardTitle className="text-lg">{channel.name}</CardTitle>
-                  <CardDescription>{channel.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm">Reach:</span>
-                      <Badge variant="outline">{channel.reach}/10</Badge>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Engagement:</span>
-                      <Badge variant="outline">{channel.engagement}/10</Badge>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Min Budget:</span>
-                      <span className="text-sm font-medium">${channel.cost.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">Audience:</span>
-                      <span className="text-xs text-gray-500">{channel.audience}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      </div>
-        
-      {/* Budget Allocation Sliders */}
-      {selectedChannels.length > 0 && (
-        <div>
-          <h3 className="text-xl font-semibold mb-4">Allocate Your Budget</h3>
-          <div className="space-y-4">
-            {selectedChannels.map(channelId => {
-              const channel = MARKETING_CHANNELS.find(c => c.id === channelId);
-              if (!channel) return null;
-              
-              const currentAllocation = budgetAllocation[channelId] || channel.cost;
-              
-              return (
-                <Card key={channelId}>
-                  <CardContent className="pt-6">
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h4 className="font-medium">{channel.name}</h4>
-                        <span className="text-lg font-semibold">
-                          ${currentAllocation.toLocaleString()}
-                        </span>
-                      </div>
-                      <Slider
-                        value={[currentAllocation]}
-                        onValueChange={([value]) => handleBudgetChange(channelId, value)}
-                        min={channel.cost}
-                        max={Math.max(totalBudget, channel.cost)}
-                        step={100}
-                        className="w-full"
-                        disabled={campaignStarted}
-                      />
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>Min: ${channel.cost.toLocaleString()}</span>
-                        <span>Max: ${totalBudget.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      )}
-        
-      {/* Campaign Launch */}
-      {!campaignStarted && (
-        <div className="text-center">
-          <Button 
-            onClick={startCampaign}
-            disabled={!canStartCampaign}
-            size="lg"
-            className="px-8"
-          >
-            {canStartCampaign ? (
-              <>
-                <Zap className="h-5 w-5 mr-2" />
-                Launch Marketing Campaign
-              </>
-            ) : (
-              `${selectedChannels.length < 2 ? 'Select 2+ channels' : 
-                allocatedBudget < 1000 ? 'Allocate $1000+ budget' : 
-                'Reduce budget allocation'}`
-            )}
-          </Button>
-        </div>
-      )}
-        
-      {/* Campaign Metrics */}
-      {campaignStarted && (
-        <div>
-          <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" />
-            Live Campaign Results
-            {!campaignComplete && <Badge variant="outline" className="ml-2">Live</Badge>}
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <Eye className="h-8 w-8 mx-auto mb-2 text-blue-600" />
-                <p className="text-2xl font-bold text-blue-600">{metrics.impressions.toLocaleString()}</p>
-                <p className="text-sm text-gray-500">Impressions</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <MousePointer className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                <p className="text-2xl font-bold text-green-600">{metrics.clicks.toLocaleString()}</p>
-                <p className="text-sm text-gray-500">Clicks</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <ShoppingCart className="h-8 w-8 mx-auto mb-2 text-purple-600" />
-                <p className="text-2xl font-bold text-purple-600">{metrics.conversions.toLocaleString()}</p>
-                <p className="text-sm text-gray-500">Conversions</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6 text-center">
-                <Heart className="h-8 w-8 mx-auto mb-2 text-red-600" />
-                <p className="text-2xl font-bold text-red-600">{metrics.followers.toLocaleString()}</p>
-                <p className="text-sm text-gray-500">New Followers</p>
-              </CardContent>
-            </Card>
-          </div>
-            
-          {/* Campaign Performance Analysis */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Campaign Performance Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+
+      {/* Monthly Performance Analysis */}
+      {monthlyDecisionMade && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly Performance Analysis</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h4 className="font-medium">Growth Metrics</h4>
                 <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Click-through Rate (CTR):</span>
-                    <span className="font-medium">
-                      {metrics.impressions > 0 ? ((metrics.clicks / metrics.impressions) * 100).toFixed(2) : 0}%
+                <div className="flex justify-between">
+                  <span>New Users</span>
+                  <span className="font-medium">
+                    {Math.round(gameState.users * (monthlyMetrics.userGrowth / 100)).toLocaleString()} 
+                    <span className="text-sm text-gray-500">
+
                     </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Conversion Rate:</span>
-                    <span className="font-medium">
-                      {metrics.clicks > 0 ? ((metrics.conversions / metrics.clicks) * 100).toFixed(2) : 0}%
-                    </span>
-                  </div>
+                  </span>
                 </div>
-                <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span>Cost per Click:</span>
-                    <span className="font-medium">
-                      ${metrics.clicks > 0 ? (allocatedBudget / metrics.clicks).toFixed(2) : 'N/A'}
-                    </span>
+                    <span>Revenue Growth</span>
+                      <span className="font-medium">
+                        {(() => {
+                          if (!previousMetrics?.revenue) return '0.0%';
+                          const growth = ((monthlyMetrics.revenue - previousMetrics.revenue) / previousMetrics.revenue) * 100;
+                          return `${growth.toFixed(1)}%`;
+                        })()}
+                      </span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Cost per Conversion:</span>
+                    <span>Marketing ROI</span>
                     <span className="font-medium">
-                      ${metrics.conversions > 0 ? (allocatedBudget / metrics.conversions).toFixed(2) : 'N/A'}
+                      {(monthlyMetrics.marketingROI * 100).toFixed(1)}%
                     </span>
                   </div>
                 </div>
               </div>
-              
-              {campaignComplete && (
-                <div className="mt-4 pt-4 border-t">
-                  <h4 className="font-medium mb-2">Campaign Impact & Marketing Score:</h4>
-                  <div className="bg-blue-50 p-3 rounded-lg mb-3">
-                    <p className="text-lg font-semibold text-blue-800">
-                      Marketing Score: {gameState.scores.marketing}/100
-                    </p>
-                    <p className="text-sm text-blue-600">
-                      Based on channel selection and budget allocation strategy
-                    </p>
+
+              <div className="space-y-4">
+                <h4 className="font-medium">Health Metrics</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Customer Satisfaction</span>
+                    <span className="font-medium">
+                      {monthlyMetrics.customerSatisfaction.toFixed(1)}%
+                    </span>
                   </div>
-                  <ul className="text-sm space-y-1 text-gray-600">
-                    <li>• Marketing team bonus: +{gameState.teamMembers.filter((m: any) => m.role === 'marketer').length * 30}%</li>
-                    <li>• Feature diversity bonus: +{gameState.features.length * 10}%</li>
-                    <li>• Team morale impact: {gameState.morale >= 75 ? '+15%' : gameState.morale >= 50 ? '+5%' : '-10%'}</li>
-                    <li>• Channel effectiveness: {selectedChannels.length >= 3 ? 'Optimal' : selectedChannels.length >= 2 ? 'Good' : 'Limited'}</li>
-                  </ul>
+                  <div className="flex justify-between">
+                    <span>Churn Rate</span>
+                    <span className="font-medium">
+                      {monthlyMetrics.churnRate.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Server Uptime</span>
+                    <span className="font-medium">
+                      {monthlyMetrics.serverUptime.toFixed(2)}%
+                    </span>
+                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </div>
+            </div>
+
+            {/* Success Indicators */}
+          <div className="mt-6 pt-6 border-t">
+            <h4 className="font-medium mb-3">Monthly Objectives</h4>
+            <div className="space-y-2">
+              {Object.entries(getSuccessThreshold(currentMonth)).map(([metric, threshold]) => {
+                // Type guard to ensure metric is a valid key of MonthlyMetrics
+                if (!(metric in monthlyMetrics)) return null;
+                
+                const current = monthlyMetrics[metric as keyof MonthlyMetrics];
+                const isAchieved = typeof current === 'number' && current >= threshold;
+                
+                return (
+                  <div key={metric} className="flex items-center gap-2">
+                    {isAchieved ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    )}
+                    <span className={isAchieved ? 'text-green-600' : 'text-amber-600'}>
+                      {metric.replace(/([A-Z])/g, ' $1').trim()}: {current?.toFixed(1) || '0.0'} / {threshold}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          </CardContent>
+        </Card>
       )}
-        
-      {/* Completion */}
-      {campaignComplete && (
+
+        {showLiveMetrics && (
+        <LiveMetrics
+          metrics={{
+            impressions: metrics.impressions,
+            clicks: metrics.clicks,
+            conversions: metrics.conversions,
+            followers: metrics.followers,
+            revenue: monthlyMetrics.revenue,
+            users: Math.round(gameState.users * (1 + monthlyMetrics.userGrowth / 100)), // Changed this line
+            roi: monthlyMetrics.marketingROI * 100
+          }}
+          baseMetrics={{
+            ...baseMetrics,
+            users: gameState.users, // Add this to show starting point
+          }}
+          isActive={monthlyDecisionMade && !showSuccessFailureModal}
+          duration={5000}
+          onComplete={handleMetricsComplete}
+        />
+  )}
+
+      {/* Next Month Button */}
+      {monthlyDecisionMade && !showSuccessFailureModal && (
         <div className="text-center">
-          <Button 
-            onClick={onComplete}
+          <Button
+            onClick={progressToNextMonth}
             size="lg"
             className="px-8"
           >
-            Complete Startup Journey
+            Progress {MONTHS_PER_STEP} Months
           </Button>
         </div>
+      )}
+
+      {/* Success/Failure Modal */}
+      {showSuccessFailureModal && (
+        <SuccessFailureModal
+          isOpen={showSuccessFailureModal}
+          result={checkSuccessConditions(monthlyMetrics, currentMonth, gameState)}
+          gameState={gameState}
+          onRestart={() => {
+            setShowSuccessFailureModal(false);
+            // Handle restart
+          }}
+          onClose={() => setShowSuccessFailureModal(false)}
+        />
       )}
     </div>
   );

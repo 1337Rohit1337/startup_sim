@@ -10,6 +10,7 @@ import { ScoreDisplay } from './shared/ScoreDisplay';
 import { DollarSign, Clock, Zap, Heart } from 'lucide-react';
 
 
+
 export const GameShell: React.FC = () => {
   const {
     gameState,
@@ -24,19 +25,25 @@ export const GameShell: React.FC = () => {
     resolveEvent,
     addSocialPost,
     nextStage,
+    updateFinances,
     canAddFeature,
+    removeFeature,
   } = useGameState();
+
+
 
   const renderCurrentStage = () => {
     switch (gameState.stage) {
       case 'foundation':
         return (
           <FoundationStage
+            updateFinances={updateFinances}
             gameState={gameState}
             updateScore={updateScore}
             validateIdea={validateIdea}
             triggerEvent={triggerEvent}
             resolveEvent={resolveEvent}
+            
             onNext={nextStage}
           />
         );
@@ -45,12 +52,15 @@ export const GameShell: React.FC = () => {
           <BuildStage
             gameState={gameState}
             addTeamMember={addTeamMember}
+            updateFinances={updateFinances}
             addFeature={addFeature}
+            removeFeature={removeFeature}
             updateMorale={updateMorale}
             triggerEvent={triggerEvent}
             resolveEvent={resolveEvent}
             canAddFeature={canAddFeature}
             onNext={nextStage}
+            isLoading={false}
           />
         );
       case 'launch':
@@ -60,11 +70,14 @@ export const GameShell: React.FC = () => {
           addSocialPost={addSocialPost}
           updateScore={updateScore}
           updateResources={updateResources}
+          updateFinances={updateFinances}
           updateMarketingScore={updateMarketingScore}
           triggerEvent={triggerEvent}
           resolveEvent={resolveEvent}
+          
           onComplete={() => {
             updateScore(1000);
+            setIsComplete(true);
             alert('Congratulations! You have successfully launched your startup!');
           }}
         />
@@ -176,7 +189,9 @@ export const GameShell: React.FC = () => {
         </div>
 
         {/* Score Display */}
-        <ScoreDisplay scores={gameState.scores} />
+        {gameState.stage === 'launch' && gameState.isComplete && (
+       <ScoreDisplay scores={gameState.scores} />
+)}
       </div>
     </div>
   );

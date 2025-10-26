@@ -5,7 +5,30 @@ export interface StartupIdea {
   market: string;
   difficulty: number;
   potential: number;
-  validated?: boolean;
+  financials: {
+    initialCosts: {
+      setup: number;          // Office/equipment setup
+      development: number;    // Initial development costs
+      legal: number;         // Legal and registration
+      marketing: number;     // Initial marketing budget
+    };
+    monthlyFixed: {
+      rent: number;
+      salaries: number;
+      utilities: number;
+      insurance: number;
+    };
+    operationalCosts: {
+      perUnit: number;       // Cost per product/service unit
+      laborPerUnit: number;  // Labor cost per unit
+      materialPerUnit: number; // Materials per unit
+    };
+    breakEvenAnalysis: {
+      recommendedPrice: number;
+      unitsPerMonth: number;
+      monthsToBreakEven: number;
+    };
+  };
 }
 
 export interface TeamMember {
@@ -16,6 +39,9 @@ export interface TeamMember {
   cost: number;
   morale: number;
   synergies: string[];
+  salary: number;
+  benefits: number;
+  productivityMultiplier: number;
 }
 
 export interface ProductFeature {
@@ -26,6 +52,9 @@ export interface ProductFeature {
   impact: number;
   cost: number;
   requiredRole?: 'coder' | 'designer' | 'marketer' | 'finance';
+  developmentTime: number;
+  maintenanceCost: number;
+  revenueImpact: number;
 }
 
 export interface MarketingCampaign {
@@ -90,10 +119,31 @@ export interface InfluencerOffer {
 export interface GameState {
   stage: 'foundation' | 'build' | 'launch';
   score: number;
+  users:number;
   resources: {
     money: number;
     time: number;
-    energy: number;
+    users;
+  };
+  finances: {
+    initialCosts: {
+      setup: number;
+      development: number;
+      legal: number;
+      marketing: number;
+    };
+    monthlyFixed: {
+      rent: number;
+      salaries: number;
+      utilities: number;
+      insurance: number;
+    };
+    operationalCosts: {
+      perUnit: number;
+      laborPerUnit: number;
+      materialPerUnit: number;
+    };
+    totalInvestment: number;
   };
   selectedIdea?: StartupIdea;
   team: TeamMember[];
@@ -103,8 +153,8 @@ export interface GameState {
   secretPerks: string[];
   socialFeedPosts: SocialPost[];
   currentEvent?: GameEvent;
+  isComplete: boolean;
 }
-
 // Legacy interfaces for backward compatibility
 export interface ValidationChoice {
   id: number;
@@ -156,6 +206,30 @@ export const STARTUP_IDEAS: StartupIdea[] = [
     market: 'Food Tech',
     difficulty: 6,
     potential: 8,
+    financials: {
+      initialCosts: {
+        setup: 12000,      // Bike fleet
+        development: 20000, // App development
+        legal: 3000,       // Licenses
+        marketing: 5000    // Initial marketing
+      },
+      monthlyFixed: {
+        rent: 2000,
+        salaries: 15000,
+        utilities: 500,
+        insurance: 1000
+      },
+      operationalCosts: {
+        perUnit: 6.50,     // Per delivery
+        laborPerUnit: 5,   // Rider payment
+        materialPerUnit: 1.50 // Packaging
+      },
+      breakEvenAnalysis: {
+        recommendedPrice: 15,
+        unitsPerMonth: 5834,
+        monthsToBreakEven: 6
+      }
+    }
   },
   {
     id: '2',
@@ -164,6 +238,30 @@ export const STARTUP_IDEAS: StartupIdea[] = [
     market: 'EdTech',
     difficulty: 8,
     potential: 9,
+    financials: {
+      initialCosts: {
+        setup: 8000,       // Hardware/servers
+        development: 30000, // AI development
+        legal: 2000,
+        marketing: 10000
+      },
+      monthlyFixed: {
+        rent: 1500,
+        salaries: 20000,
+        utilities: 800,
+        insurance: 1200
+      },
+      operationalCosts: {
+        perUnit: 2.00,     // Per user cost
+        laborPerUnit: 1,   // Support cost
+        materialPerUnit: 1  // Server costs
+      },
+      breakEvenAnalysis: {
+        recommendedPrice: 20,
+        unitsPerMonth: 3000,
+        monthsToBreakEven: 8
+      }
+    }
   },
   {
     id: '3',
@@ -172,6 +270,30 @@ export const STARTUP_IDEAS: StartupIdea[] = [
     market: 'Social Commerce',
     difficulty: 5,
     potential: 7,
+    financials: {
+      initialCosts: {
+        setup: 5000,       // Office setup
+        development: 15000, // Platform development
+        legal: 2000,       // Marketplace regulations
+        marketing: 8000    // Local marketing
+      },
+      monthlyFixed: {
+        rent: 1000,
+        salaries: 12000,
+        utilities: 400,
+        insurance: 800
+      },
+      operationalCosts: {
+        perUnit: 1.00,     // Per transaction
+        laborPerUnit: 0.50, // Customer service
+        materialPerUnit: 0.50 // Platform maintenance
+      },
+      breakEvenAnalysis: {
+        recommendedPrice: 5,
+        unitsPerMonth: 8000,
+        monthsToBreakEven: 4
+      }
+    }
   },
   {
     id: '4',
@@ -180,6 +302,30 @@ export const STARTUP_IDEAS: StartupIdea[] = [
     market: 'HealthTech',
     difficulty: 7,
     potential: 8,
+    financials: {
+      initialCosts: {
+        setup: 10000,      // Health monitoring equipment
+        development: 25000, // App development
+        legal: 5000,       // Health regulations
+        marketing: 7000    // Healthcare marketing
+      },
+      monthlyFixed: {
+        rent: 1800,
+        salaries: 18000,
+        utilities: 600,
+        insurance: 2000    // Higher for health tech
+      },
+      operationalCosts: {
+        perUnit: 3.00,     // Per user monitoring
+        laborPerUnit: 2,   // Health data analysis
+        materialPerUnit: 1  // Data storage
+      },
+      breakEvenAnalysis: {
+        recommendedPrice: 25,
+        unitsPerMonth: 2500,
+        monthsToBreakEven: 7
+      }
+    }
   },
   {
     id: '5',
@@ -188,7 +334,31 @@ export const STARTUP_IDEAS: StartupIdea[] = [
     market: 'CleanTech',
     difficulty: 9,
     potential: 10,
-  },
+    financials: {
+      initialCosts: {
+        setup: 15000,      // Demo equipment
+        development: 35000, // Platform development
+        legal: 6000,       // Energy sector compliance
+        marketing: 12000   // B2B marketing
+      },
+      monthlyFixed: {
+        rent: 2500,
+        salaries: 25000,
+        utilities: 1000,
+        insurance: 3000
+      },
+      operationalCosts: {
+        perUnit: 100.00,   // Per installation commission
+        laborPerUnit: 50,  // Project management
+        materialPerUnit: 50 // Quality assurance
+      },
+      breakEvenAnalysis: {
+        recommendedPrice: 500,
+        unitsPerMonth: 200,
+        monthsToBreakEven: 10
+      }
+    }
+  }
 ];
 
 export const VALIDATION_CHOICES: ValidationChoice[] = [
@@ -225,10 +395,102 @@ export const VALIDATION_CHOICES: ValidationChoice[] = [
 ];
 
 export const TEAM_MEMBERS: TeamMember[] = [
-  { id: '1', name: 'Alex Chen', role: 'coder', skill: 8, cost: 3000, morale: 80, synergies: ['designer'] },
-  { id: '2', name: 'Sarah Kim', role: 'designer', skill: 7, cost: 2500, morale: 85, synergies: ['coder'] },
-  { id: '3', name: 'Mike Johnson', role: 'marketer', skill: 6, cost: 2000, morale: 75, synergies: ['finance'] },
-  { id: '4', name: 'Lisa Wang', role: 'finance', skill: 9, cost: 3500, morale: 90, synergies: ['marketer'] },
+  { 
+    id: '1', 
+    name: 'Alex Chen', 
+    role: 'coder', 
+    skill: 8, 
+    cost: 3000, 
+    morale: 80, 
+    synergies: ['designer'],
+    salary: 8000,
+    benefits: 2000,
+    productivityMultiplier: 1.2
+  },
+  { 
+    id: '2', 
+    name: 'Sarah Kim', 
+    role: 'designer', 
+    skill: 7, 
+    cost: 2500, 
+    morale: 85, 
+    synergies: ['coder'],
+    salary: 6500,
+    benefits: 1500,
+    productivityMultiplier: 1.1
+  },
+  { 
+    id: '3', 
+    name: 'Mike Johnson', 
+    role: 'marketer', 
+    skill: 6, 
+    cost: 2000, 
+    morale: 75, 
+    synergies: ['finance'],
+    salary: 5500,
+    benefits: 1200,
+    productivityMultiplier: 1.0
+  },
+  { 
+    id: '4', 
+    name: 'Lisa Wang', 
+    role: 'finance', 
+    skill: 9, 
+    cost: 3500, 
+    morale: 90, 
+    synergies: ['marketer'],
+    salary: 9000,
+    benefits: 2500,
+    productivityMultiplier: 1.3
+  },
+  { 
+    id: '5', 
+    name: 'David Smith', 
+    role: 'coder', 
+    skill: 7, 
+    cost: 2800, 
+    morale: 82, 
+    synergies: ['designer'],
+    salary: 7000,
+    benefits: 1800,
+    productivityMultiplier: 1.1
+  },
+  { 
+    id: '6', 
+    name: 'Emily Zhang', 
+    role: 'designer', 
+    skill: 8, 
+    cost: 2700, 
+    morale: 88, 
+    synergies: ['marketer'],
+    salary: 7200,
+    benefits: 1700,
+    productivityMultiplier: 1.2
+  },
+  { 
+    id: '7', 
+    name: 'James Wilson', 
+    role: 'marketer', 
+    skill: 7, 
+    cost: 2300, 
+    morale: 85, 
+    synergies: ['finance'],
+    salary: 6000,
+    benefits: 1400,
+    productivityMultiplier: 1.1
+  },
+  { 
+    id: '8', 
+    name: 'Maria Garcia', 
+    role: 'finance', 
+    skill: 8, 
+    cost: 3200, 
+    morale: 87, 
+    synergies: ['coder'],
+    salary: 8500,
+    benefits: 2200,
+    productivityMultiplier: 1.2
+  }
 ];
 
 export const FEATURES: Feature[] = [
